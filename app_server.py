@@ -1,41 +1,102 @@
 import os
-from flask import Flask, flash, request, redirect, url_for
+from flask import Flask, flash, request, redirect, url_for, render_template
 from werkzeug.utils import secure_filename
 from flask import send_from_directory
-import upload_source_img
+from rekognition_connection import Rekognition as rk
 
 UPLOAD_FOLDER = 'uploads'
-ALLOWED_EXTENSIONS = set(['png', 'jpg'])
+ALLOWED_EXTENSIONS = {'png', 'jpg'}
 
 app = Flask(__name__)
+app.secret_key = b'secret key'
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
+app.config['MAX_CONTENT_LENGTH'] = 1024 * 1024
+rk = rk()
 
 
 def allowed_file(filename):
     return '.' in filename and \
            filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
-@app.route('/', methods=['GET', 'POST'])
-def upload_file():
+
+@app.route("/")
+def login():
+    return render_template('login.html')
+
+
+@app.route("/", methods=['POST'])
+def auth():
+    usuarios = ['paulo.csm@outlook.com', 'batata123']
+    username = request.form['username']
+    password = request.form['password']
+
+    if username not in usuarios or password not in usuarios:
+        print("entrou")
+        flash("Email ou Senha incorreto")
+        return redirect('/')
+    else:
+        return redirect('/index', code=302)
+
+
+@app.route('/cadastro', methods=['GET', 'POST'])
+def cadastro():
+    return render_template('cadastro.html')
+
+
+@app.route('/index', methods=['GET', 'POST'])
+def index():
+    return render_template('report.html')
+
+
+@app.route('/missing_person', methods=['POST'])
+def missing_person_upload():
+    flag = "pessoa_perdida"
+    nome_idoso = "Jose"
+    nome_parente = "Felipe Printes"
+
     if request.method == 'POST':
-        # check if the post request has the file part
+        # Checa se a requisição post tem um pedaço do arquivo
+        if 'file' not in request.files or 'file2' not in request.files:
+            flash('No file part')
+            return redirect('/')
+
+        # Verefica se há algum arquivo para ser enviado
+        file = request.files['file']
+        file2 = request.files['file2']
+        if file.filename == '' or file2.filename == '':
+            flash('Nenhum arquivo selecionado para upload')
+            return redirect('/')
+
+        if file and allowed_file(file.filename) and file2 and allowed_file(file2.filename):
+            mensagem = rk.upload(file, nome_idoso, flag, foto_parente=file2, nome_parente=nome_parente)
+            flash(mensagem)
+            return redirect('/')
+
+
+@app.route('/cad_person', methods=['GET'])
+def cad_person_upload():
+    nome_idoso = request.form['cName2']
+    email = request.form['cMail']
+    nome_parente = request.form['cName']
+    cpf = request.form['cDoc']
+    flag = "cad_pessoa"
+
+    if request.method == 'POST':
+        # Checa se a requisição post tem um pedaço do arquivo
         if 'file' not in request.files:
             flash('No file part')
-            return redirect(request.url)
-        file = request.files['file']
-        # if user does not select file, browser also
-        # submit an empty part without filename
-        if file.filename == '':
-            flash('No selected file')
-            return redirect(request.url)
-        if file and allowed_file(file.filename):
-            filename = secure_filename(file.filename)
-            file.save(os.path.join(app.config['UPLOAD_FOLDER'], filename))
-            #upload_file.upload(foto)
-            upload_source_img.upload(filename)
+            return redirect('/')
 
-            #return redirect(url_for('uploaded_file',filename=filename))
-            return 'sucesso'
+        # Verefica se há algum arquivo para ser enviado
+        file = request.files['file']
+        if file.filename == '':
+            flash('Nenhum arquivo selecionado para upload')
+            return redirect('/')
+
+        if file and allowed_file(file.filename):
+            mensagem = rk.upload(file, nome_idoso, flag)
+            flash(mensagem)
+            return redirect('/')
 
     return '''
     <!doctype html>
